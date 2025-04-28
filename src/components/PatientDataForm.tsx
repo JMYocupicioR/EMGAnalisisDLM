@@ -1,278 +1,312 @@
-import React, { useState, useEffect } from 'react';
-import { Patient } from '../types/patient';
-import { databaseService } from '../services/databaseService';
-import { v4 as uuidv4 } from 'uuid';
+import { useState, useEffect } from "react";
+import { storageService } from "../services/unifiedStorageService";
+import { validationService } from "../services/validationService";
+import { v4 as uuidv4 } from "uuid";
+import { Patient } from "../types/patient";
+import { emptyPatient } from "../types/patient";
 
 interface PatientDataFormProps {
-  onSubmit: (data: Patient) => void;
+  onSubmit: (patient: Patient) => void;
   initialData?: Partial<Patient>;
 }
 
-const PatientDataForm: React.FC<PatientDataFormProps> = ({ onSubmit, initialData }) => {
+const PatientDataForm = ({ onSubmit, initialData }: PatientDataFormProps) => {
   const [formData, setFormData] = useState<Patient>({
+    ...emptyPatient,
+    ...initialData,
     id: initialData?.id || uuidv4(),
-    firstName: initialData?.firstName || '',
-    lastName: initialData?.lastName || '',
-    dateOfBirth: initialData?.dateOfBirth || '',
-    sex: initialData?.sex || 'male',
-    contact: {
-      phone: initialData?.contact?.phone || '',
-      email: initialData?.contact?.email || '',
-      address: initialData?.contact?.address || '',
-    },
-    medicalHistory: {
-      previousDiseases: initialData?.medicalHistory?.previousDiseases || [],
-      surgeries: initialData?.medicalHistory?.surgeries || [],
-      currentMedications: initialData?.medicalHistory?.currentMedications || [],
-      allergies: initialData?.medicalHistory?.allergies || [],
-      familyHistory: initialData?.medicalHistory?.familyHistory || '',
-    },
-    mainDiagnosis: initialData?.mainDiagnosis || '',
-    consultReason: initialData?.consultReason || '',
-    additionalNotes: initialData?.additionalNotes || '',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   });
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (initialData?.id) {
-      loadPatientData(initialData.id);
+    if (initialData) {
+      setFormData({
+        ...emptyPatient,
+        ...initialData,
+        id: initialData.id || uuidv4(),
+      });
     }
-  }, [initialData?.id]);
-
-  const loadPatientData = async (id: string) => {
-    try {
-      const patient = await databaseService.getPatient(id);
-      if (patient) {
-        setFormData(patient);
-      }
-    } catch (err) {
-      setError('Error al cargar los datos del paciente');
-      console.error(err);
-    }
-  };
+  }, [initialData]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
-    if (name.includes('.')) {
-      const [section, field] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [section]: {
-          ...prev[section as keyof typeof prev],
-          [field]: value
+    setFormData(prev => {
+      if (name.startsWith('contact.')) {
+        const field = name.split('.')[1];
+        return {
+          ...prev,
+          contact: {
+            ...prev.contact,
+            [field]: value
+          }
+        };
+      } else if (name.startsWith('medicalHistory.')) {
+        const field = name.split('.')[1];
+        // Handle array fields
+        if (['previousDiseases', 'surgeries', 'currentMedications', 'allergies'].includes(field)) {
+          return {
+            ...prev,
+            medicalHistory: {
+              ...prev.medicalHistory,
+              [field]: value.split(',').map(item => item.trim()).filter(item => item !== '')
+            }
+          };
         }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
+        // Handle string fields
+        return {
+          ...prev,
+          medicalHistory: {
+            ...prev.medicalHistory,
+            [field]: value
+          }
+        };
+      } else {
+        return {
+          ...prev,
+          [name]: value
+        };
+      }
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
-
     try {
-      // Validación básica
-      if (!formData.firstName || !formData.lastName || !formData.dateOfBirth) {
-        setError('Por favor complete todos los campos requeridos');
-        return;
+      validationService.validatePatient(formData);
+      const savedPatient = await storageService.savePatient(formData);
+      onSubmit(savedPatient);
+      setErrors({});
+    } catch (error) {
+      if (error instanceof Error) {
+        setErrors({ [error.name]: error.message });
       }
-
-      // Guardar en la base de datos
-      await databaseService.savePatient(formData);
-      
-      // Notificar éxito
-      setSuccess('Datos del paciente guardados exitosamente');
-      
-      // No llamamos a onSubmit aquí, lo haremos cuando el usuario haga clic en continuar
-    } catch (err) {
-      setError('Error al guardar los datos del paciente');
-      console.error(err);
     }
   };
 
   return (
-    <div className="bg-gray-800/50 backdrop-blur-sm p-6 rounded-lg shadow-lg border border-gray-700/50">
-      <h2 className="text-xl font-semibold text-gray-200 mb-6">Datos del Paciente</h2>
-      
-      {error && (
-        <div className="mb-4 p-4 bg-red-500/20 border border-red-500 text-red-200 rounded-lg">
-          {error}
-        </div>
-      )}
-      
-      {success && (
-        <div className="mb-4 p-4 bg-green-500/20 border border-green-500 text-green-200 rounded-lg">
-          {success}
-        </div>
-      )}
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Nombre *
-            </label>
-            <input
-              type="text"
-              name="firstName"
-              value={formData.firstName}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Apellido *
-            </label>
-            <input
-              type="text"
-              name="lastName"
-              value={formData.lastName}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Fecha de Nacimiento *
-            </label>
-            <input
-              type="date"
-              name="dateOfBirth"
-              value={formData.dateOfBirth}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Sexo *
-            </label>
-            <select
-              name="sex"
-              value={formData.sex}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            >
-              <option value="male">Masculino</option>
-              <option value="female">Femenino</option>
-            </select>
-          </div>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+            Nombre
+          </label>
+          <input
+            type="text"
+            id="firstName"
+            name="firstName"
+            value={formData.firstName}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+          />
+          {errors.firstName && <p className="mt-1 text-sm text-red-600">{errors.firstName}</p>}
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-gray-200">Datos de Contacto</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Teléfono *
-              </label>
-              <input
-                type="tel"
-                name="contact.phone"
-                value={formData.contact.phone}
-                onChange={handleChange}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                name="contact.email"
-                value={formData.contact.email}
-                onChange={handleChange}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Dirección
-              </label>
-              <input
-                type="text"
-                name="contact.address"
-                value={formData.contact.address}
-                onChange={handleChange}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          </div>
+        <div>
+          <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+            Apellido
+          </label>
+          <input
+            type="text"
+            id="lastName"
+            name="lastName"
+            value={formData.lastName}
+            onChange={handleChange}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+          />
+          {errors.lastName && <p className="mt-1 text-sm text-red-600">{errors.lastName}</p>}
         </div>
+      </div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium text-gray-200">Antecedentes Médicos</h3>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Motivo de Consulta *
-            </label>
-            <textarea
-              name="consultReason"
-              value={formData.consultReason}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-              required
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Antecedentes Familiares
-            </label>
-            <textarea
-              name="medicalHistory.familyHistory"
-              value={formData.medicalHistory.familyHistory}
-              onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              rows={3}
-            />
-          </div>
-        </div>
+      <div>
+        <label htmlFor="dateOfBirth" className="block text-sm font-medium text-gray-700">
+          Fecha de Nacimiento
+        </label>
+        <input
+          type="date"
+          id="dateOfBirth"
+          name="dateOfBirth"
+          value={formData.dateOfBirth}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+        {errors.dateOfBirth && <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth}</p>}
+      </div>
 
-        <div className="flex justify-end space-x-4">
-          <button
-            type="submit"
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Guardar Datos
-          </button>
-          {success && (
-            <button
-              type="button"
-              onClick={() => onSubmit(formData)}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Continuar
-            </button>
-          )}
-        </div>
-      </form>
-    </div>
+      <div>
+        <label htmlFor="sex" className="block text-sm font-medium text-gray-700">
+          Sexo
+        </label>
+        <select
+          id="sex"
+          name="sex"
+          value={formData.sex}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        >
+          <option value="male">Masculino</option>
+          <option value="female">Femenino</option>
+          <option value="other">Otro</option>
+        </select>
+      </div>
+
+      <div>
+        <label htmlFor="contact.phone" className="block text-sm font-medium text-gray-700">
+          Teléfono
+        </label>
+        <input
+          type="tel"
+          id="contact.phone"
+          name="contact.phone"
+          value={formData.contact.phone}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+        {errors['contact.phone'] && <p className="mt-1 text-sm text-red-600">{errors['contact.phone']}</p>}
+      </div>
+
+      <div>
+        <label htmlFor="contact.email" className="block text-sm font-medium text-gray-700">
+          Email
+        </label>
+        <input
+          type="email"
+          id="contact.email"
+          name="contact.email"
+          value={formData.contact.email}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="contact.address" className="block text-sm font-medium text-gray-700">
+          Dirección
+        </label>
+        <input
+          type="text"
+          id="contact.address"
+          name="contact.address"
+          value={formData.contact.address}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="medicalHistory.previousDiseases" className="block text-sm font-medium text-gray-700">
+          Enfermedades Previas
+        </label>
+        <textarea
+          id="medicalHistory.previousDiseases"
+          name="medicalHistory.previousDiseases"
+          value={formData.medicalHistory.previousDiseases.join(', ')}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="medicalHistory.surgeries" className="block text-sm font-medium text-gray-700">
+          Cirugías
+        </label>
+        <textarea
+          id="medicalHistory.surgeries"
+          name="medicalHistory.surgeries"
+          value={formData.medicalHistory.surgeries.join(', ')}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="medicalHistory.currentMedications" className="block text-sm font-medium text-gray-700">
+          Medicamentos Actuales
+        </label>
+        <textarea
+          id="medicalHistory.currentMedications"
+          name="medicalHistory.currentMedications"
+          value={formData.medicalHistory.currentMedications.join(', ')}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="medicalHistory.allergies" className="block text-sm font-medium text-gray-700">
+          Alergias
+        </label>
+        <textarea
+          id="medicalHistory.allergies"
+          name="medicalHistory.allergies"
+          value={formData.medicalHistory.allergies.join(', ')}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="medicalHistory.familyHistory" className="block text-sm font-medium text-gray-700">
+          Historia Familiar
+        </label>
+        <textarea
+          id="medicalHistory.familyHistory"
+          name="medicalHistory.familyHistory"
+          value={formData.medicalHistory.familyHistory}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="mainDiagnosis" className="block text-sm font-medium text-gray-700">
+          Diagnóstico Principal
+        </label>
+        <input
+          type="text"
+          id="mainDiagnosis"
+          name="mainDiagnosis"
+          value={formData.mainDiagnosis}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="consultReason" className="block text-sm font-medium text-gray-700">
+          Motivo de Consulta
+        </label>
+        <textarea
+          id="consultReason"
+          name="consultReason"
+          value={formData.consultReason}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="additionalNotes" className="block text-sm font-medium text-gray-700">
+          Notas Adicionales
+        </label>
+        <textarea
+          id="additionalNotes"
+          name="additionalNotes"
+          value={formData.additionalNotes}
+          onChange={handleChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="submit"
+          className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        >
+          Guardar
+        </button>
+      </div>
+    </form>
   );
 };
 

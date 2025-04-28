@@ -1,4 +1,4 @@
-export type StudyType = 'emg' | 'ncs' | 'both';
+import { StudyType } from './index';
 
 export interface Study {
   id: string;
@@ -6,8 +6,8 @@ export interface Study {
   date: string;
   patientId: string;
   results: {
-    emg?: EMGResults;
-    ncs?: NCSResults;
+    emg?: EMGResults[];
+    ncs?: NCSResults[];
   };
   observations?: string;
   conclusion?: string;
@@ -16,23 +16,41 @@ export interface Study {
 }
 
 export interface EMGResults {
-  muscles: {
-    name: string;
-    insertionalActivity: string;
-    spontaneousActivity: string;
-    motorUnitActionPotentials: string;
-    recruitmentPattern: string;
-  }[];
-  summary: string;
+  muscle: string;
+  side: 'left' | 'right';
+  insertionalActivity: string;
+  spontaneousActivity: string;
+  motorUnitActionPotentials: {
+    amplitude: number;
+    duration: number;
+    polyphasia: number;
+  };
+  recruitment: string;
+  interferencePattern: string;
 }
 
 export interface NCSResults {
-  nerves: {
-    name: string;
-    latency: number;
-    amplitude: number;
-    velocity: number;
-    distance: number;
-  }[];
-  summary: string;
-} 
+  nerve: string;
+  side: 'left' | 'right';
+  latency: number;
+  amplitude: number;
+  velocity: number;
+  distance: number;
+  temperature: number;
+}
+
+// Estado vacío para inicializar el formulario
+export const emptyStudy: Study = {
+  id: '',
+  type: 'emg',
+  date: new Date().toISOString(),
+  patientId: '',
+  results: {
+    emg: [],
+    ncs: []
+  },
+  observations: '',
+  conclusion: '',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+}; 

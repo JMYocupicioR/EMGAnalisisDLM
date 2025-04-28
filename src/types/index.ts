@@ -1,87 +1,45 @@
-export type StudyType = 'neuroconduction' | 'myography' | 'special';
+export * from './patient';
+export * from './study';
+export * from './patientStudy';
 
-export type Side = 'left' | 'right' | 'both';
+// Tipos comunes
+export type StudyType = 'emg' | 'nerve_conduction' | 'other';
 
-export interface NerveMeasurement {
+// Interfaces de resultados
+export interface EMGResults {
+  muscle: string;
+  side: 'left' | 'right';
+  insertionalActivity: string;
+  spontaneousActivity: string;
+  motorUnitActionPotentials: {
+    amplitude: number;
+    duration: number;
+    polyphasia: number;
+  };
+  recruitment: string;
+  interferencePattern: string;
+}
+
+export interface NCSResults {
   nerve: string;
+  side: 'left' | 'right';
   latency: number;
   amplitude: number;
   velocity: number;
-  fResponse?: number;
+  distance: number;
+  temperature: number;
 }
 
-export interface PendingStudy {
-  id: string;
-  nerve: string;
-  side: Side;
-  measurements: NerveMeasurement;
-}
-
-export interface Study {
-  id: string;
-  nerve: string;
-  side: Side;
-  measurements: NerveMeasurement;
-  interpretation: string[];
-  status: 'normal' | 'abnormal';
-  timestamp: string;
-}
-
-export interface StudyData {
-  sides: {
-    left?: NerveMeasurement;
-    right?: NerveMeasurement;
-  };
-  notes?: string;
-}
-
-export interface NerveReference {
-  name: string;
-  latency: { min: number; max: number };
-  velocity: { min: number; max: number };
-  amplitude: { min: number; max: number };
-}
-
+// Interfaces de análisis
 export interface AnalysisResult {
-  nerve: string;
-  measurements: NerveMeasurement;
-  interpretation: string[];
-  status: 'normal' | 'abnormal';
-}
-
-// Tipos para el módulo de pacientes
-export interface Patient {
   id: string;
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  sex: string;
-  contact: {
-    phone: string;
-    email?: string;
-    address?: string;
+  studyId: string;
+  type: StudyType;
+  findings: {
+    emg?: EMGResults[];
+    ncs?: NCSResults[];
   };
-  medicalHistory?: {
-    previousDiseases: string[];
-    surgeries: string[];
-    currentMedications: string[];
-    allergies: string[];
-    familyHistory?: string;
-  };
-  mainDiagnosis?: string;
-  consultReason?: string;
-  additionalNotes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// Tipos para estudios de pacientes
-export interface PatientStudy {
-  id: string;
-  patientId: string;
-  studyType: StudyType;
+  interpretation: string;
+  recommendations: string[];
   timestamp: string;
-  data: StudyData;
-  results: any;
-  conclusion?: string;
-}
+} 
